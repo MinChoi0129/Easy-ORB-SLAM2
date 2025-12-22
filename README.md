@@ -27,9 +27,9 @@ sudo apt-get install libopencv-dev libeigen3-dev libboost-all-dev
 ```
 
 **주요 패키지:**
-- OpenCV 4.x
+- OpenCV 4
 - Eigen3
-- Boost (filesystem, system, serialization)
+- Boost 1.83.0 (filesystem, system, serialization)
 - Pangolin (시각화)
 
 ### 빌드
@@ -88,9 +88,9 @@ sudo apt-get install libopencv-dev libeigen3-dev libboost-all-dev
 ```
 
 **Main Packages:**
-- OpenCV 4.x
+- OpenCV 4
 - Eigen3
-- Boost (filesystem, system, serialization)
+- Boost 1.83.0 (filesystem, system, serialization)
 - Pangolin (visualization)
 
 ### Build
@@ -98,7 +98,7 @@ sudo apt-get install libopencv-dev libeigen3-dev libboost-all-dev
 ```bash
 mkdir build && cd build
 cmake ..
-make -j4
+make -j8
 ```
 
 ### Running Examples
