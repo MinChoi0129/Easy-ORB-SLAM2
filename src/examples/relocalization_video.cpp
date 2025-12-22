@@ -1,0 +1,212 @@
+#include <cstdio>
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+
+// Linux에서 비동기 키 입력 체크를 위한 간단한 함수
+bool kbhit() {
+  struct termios oldt, newt;
+  int ch;
+  int oldf;
+
+  tcgetattr(STDIN_FILENO, &oldt);
+  newt = oldt;
+  newt.c_lflag &= ~(ICANON | ECHO);
+  tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+  oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+  fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
+
+  ch = getchar();
+
+  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+  fcntl(STDIN_FILENO, F_SETFL, oldf);
+
+  if (ch != EOF) {
+    ungetc(ch, stdin);
+    return true;
+  }
+
+  return false;
+}
+
+bool GetAsyncKeyState(int key) {
+  if (kbhit()) {
+    int ch = getchar();
+    return (ch == key || ch == (key - 32)); // 대소문자 모두 체크
+  }
+  return false;
+}
+
+#include <System.h>
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <iostream>
+#include <opencv2/core/core.hpp>
+#include <opencv2/videoio.hpp>
+#include <string>
+
+using namespace std;
+
+// 사용자로부터 비디오 파일, 맵 파일 이름을 입력받는 함수
+inline void UserInputFilesName(string &videoFile, string &mapFile);
+
+// 비디오 파일 이름에서 확장자를 제외한 이름을 반환하는 함수
+string GetNonExtVideoFileName(string videoFileName);
+
+// 비디오 파일이 정상적으로 open되었는지, 맵 디렉토리가 존재하며 맵 파일이
+// 존재하는지 확인하는 함수, error: true 반환
+bool ErrorCheck(const cv::VideoCapture &capture, const string &mapFileName,
+                const string &videoFileName);
+
+int main(void) {
+  string userInputVideoFileName, userInputMapFileName;
+  UserInputFilesName(userInputVideoFileName, userInputMapFileName);
+#ifdef _DEBUG
+  cout << "userInputVideoFileName : " << userInputVideoFileName << endl;
+  cout << "userInputMapFileName : " << userInputMapFileName << endl;
+#endif
+  const string videoFileName =
+      userInputVideoFileName; // videoFileName = video file name(include file
+                              // extension)
+  const string nonExtVideoFileName = GetNonExtVideoFileName(videoFileName);
+  cv::VideoCapture capture(
+      "../data/video/" + videoFileName); // video path(default) + videoFileName
+
+  if (ErrorCheck(capture, userInputMapFileName, videoFileName))
+    return 1;
+
+  capture.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+  capture.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+
+  // relocalization_video -> load -> slam
+  // 프로그램 실행시 입력받은 비디오 파일 이름과 맵 파일 이름을 입력받음
+  // 맵 파일을 로드하고 이어서 slam을 수행하되 맵 파일에 저장시키지
+  // 않음(mapSave, reuseMap 매개변수와 연관)
+  const bool mapSave = false, reuseMap = true;
+  /* parameter form
+  ** System(vocabulary, settingFile, sensor, useViewer = true, mapSave = false,
+  * reuseMap = false, videoFileName = "", mapFileName = ""); */
+
+  const string VOCABULARY_PATH = "../data/vocabulary/";
+  const string FILE_NAME = "ORBvoc.bin";
+  ifstream txtVocaFileCheck; // file open 확인 용도
+  txtVocaFileCheck.open(VOCABULARY_PATH + FILE_NAME);
+  if (txtVocaFileCheck.eof() || !txtVocaFileCheck.is_open()) {
+    cerr << "\n" << VOCABULARY_PATH + FILE_NAME << " : File not found.\n";
+    cout << "Press any key to exit..." << endl;
+    return 0;
+  }
+  txtVocaFileCheck.close();
+
+  // vocabulary type : txt
+  // ORB_SLAM2::System SLAM("../data/vocabulary/ORBvoc.txt",
+  // "../data/parameter/Monocular/TUM2.yaml", ORB_SLAM2::System::MONOCULAR,
+  // true, mapSave, reuseMap, nonExtVideoFileName, userInputMapFileName);
+
+  // vocabulary type : bin (binary)
+  ORB_SLAM2::System SLAM(VOCABULARY_PATH + FILE_NAME,
+                         "../data/parameter/Monocular/TUM2.yaml",
+                         ORB_SLAM2::System::MONOCULAR, true, mapSave, reuseMap,
+                         nonExtVideoFileName, userInputMapFileName);
+
+  cout << endl << "-------" << endl;
+  cout << "Start processing video sequences ..." << endl;
+  cout << "Key-stroke \'s\' or read the video to the end : End program loop."
+       << endl;
+
+  cv::Mat video;
+  vector<double> vTimestamps;
+
+  while (capture.read(video)) {
+    double timestamp = capture.get(cv::CAP_PROP_POS_MSEC) / 1000.;
+    SLAM.TrackMonocular(video, timestamp);
+    vTimestamps.push_back(timestamp);
+    if (GetAsyncKeyState('s') || GetAsyncKeyState('S'))
+      break;
+  }
+  SLAM.Shutdown();
+  capture.release();
+
+  sort(vTimestamps.begin(), vTimestamps.end());
+
+  double totalTime = 0.;
+  size_t nSize = vTimestamps.size();
+  for (double elem : vTimestamps)
+    totalTime += elem;
+  cout << "-------" << endl << endl;
+  cout << "median tracking time: " << vTimestamps[nSize / 2] << endl;
+  cout << "mean tracking time: " << totalTime / nSize << endl;
+
+  // Save camera trajectory
+  SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
+
+  return 0;
+}
+
+void UserInputFilesName(string &videoFile, string &mapFile) {
+  cout << "Input video file name.(Include file extensions) : ";
+  // path : ORB-SLAM/data/video
+  getline(cin, videoFile);
+  cout << "Input map file name.(Include file extensions : *.bin) : ";
+  // path : ORB-SLAM/data/map
+  getline(cin, mapFile);
+}
+
+string GetNonExtVideoFileName(string videoFileName) {
+  if (string::npos ==
+      videoFileName.find('.')) { // 비디오 파일 이름에서 .(dot : 확장자
+                                 // 구분자)를 찾지 못한 경우
+    cerr << "The video file extension was not found. (ex : .mp4)" << endl;
+    return string();
+  }
+  reverse(videoFileName.begin(), videoFileName.end());
+  videoFileName.erase(videoFileName.begin(),
+                      videoFileName.begin() + videoFileName.find('.') + 1);
+  reverse(videoFileName.begin(), videoFileName.end());
+  return videoFileName;
+}
+
+bool ErrorCheck(const cv::VideoCapture &capture, const string &mapFileName,
+                const string &videoFileName) {
+  bool isError = false;
+
+  // [video]디렉토리에 변수(videoFileName)와 일치하는 비디오 파일이 존재하는지
+  // 확인
+  if (![&]() {
+        boost::filesystem::path videoFile("../data/video/" + videoFileName);
+        return boost::filesystem::exists(videoFile) ? true : false;
+      }()) {
+    isError = true;
+    cerr << "video file does not exist (File name : " + videoFileName + ")"
+         << endl;
+  }
+
+  if (!capture.isOpened()) {
+    isError = true;
+    cerr << "video open error" << endl;
+  }
+
+  // 맵 파일을 저장하는 [map]디렉토리가 존재하는지 확인
+  if (![&]() {
+        boost::filesystem::path mapDir("../data/map/");
+        return boost::filesystem::exists(mapDir) ? true : false;
+      }()) {
+    isError = true;
+    cerr << "Map data directory path does not exist." << endl;
+  }
+
+  // [map]디렉토리에 string매개변수와 일치하는 맵 파일이 존재하는지 확인
+  if (![&]() {
+        boost::filesystem::path mapFile("../data/map/" + mapFileName);
+        return boost::filesystem::exists(mapFile) ? true : false;
+      }()) {
+    isError = true;
+    cerr << "map data file does not exist (File name : " + mapFileName + ")"
+         << endl;
+  }
+
+  if (isError)
+    return isError;
+  return false;
+}
