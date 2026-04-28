@@ -13,19 +13,31 @@ ORB-SLAM2 is a complete SLAM system for monocular, stereo, and RGB-D cameras.
 ### Dependencies
 
 ```bash
-sudo apt-get install libopencv-dev libeigen3-dev libboost-all-dev
-```
+apt-get update && apt-get install -y \
+    software-properties-common build-essential cmake git wget unzip \
+    libglew-dev libegl1-mesa-dev libgl1-mesa-dev libwayland-dev \
+    libxkbcommon-dev xorg-dev libx11-dev libpng-dev libjpeg-dev \
+    libtiff-dev libavcodec-dev libavformat-dev libswscale-dev \
+    libavutil-dev libeigen3-dev libopencv-dev libepoxy-dev
 
-**Main Packages:**
-- OpenCV 4
-- Eigen3
-- Boost 1.83.0 (filesystem, system, serialization)
-- Pangolin (visualization)
+add-apt-repository -y ppa:mhier/libboost-latest
+apt-get update
+apt-get install -y libboost1.83-all-dev
+
+git clone --recursive https://github.com/stevenlovegrove/Pangolin.git /tmp/Pangolin
+cd /tmp/Pangolin
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make -j$(nproc)
+make install
+```
 
 ### Build
 
 ```bash
-mkdir build && cd build
+cd your_workspace
+git clone https://github.com/MinChoi0129/Easy-ORB-SLAM2.git && cd Easy-ORB-SLAM2
+cd build (build folder already exists)
 cmake ..
 make -j8
 ```
