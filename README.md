@@ -40,6 +40,7 @@ git clone https://github.com/MinChoi0129/Easy-ORB-SLAM2.git && cd Easy-ORB-SLAM2
 cd build (build folder already exists)
 cmake ..
 make -j8
+ldconfig
 ```
 
 ### Running Examples
